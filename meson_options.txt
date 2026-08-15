@@ -1,0 +1,7 @@
+option('sdl3', type: 'boolean', value: false, description: 'Build against SDL3 instead of SDL2')
+option('openal', type: 'boolean', value: true, description: 'OpenAL support')
+option('curl', type: 'boolean', value: true, description: 'cURL support')
+option('system_minizip', type: 'boolean', value: false, description: 'Use system minizip instead of bundled')
+option('systemwide', type: 'boolean', value: false, description: 'Enable systemwide installation of game assets')
+option('xdg', type: 'boolean', value: true, description: 'Use XDG directories to store user data')
+option('systemdir', type: 'string', value: '', description: 'System directory override')

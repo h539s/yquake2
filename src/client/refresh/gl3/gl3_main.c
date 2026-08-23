@@ -679,19 +679,61 @@ GL3_Init(void)
 	gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
 
 	// Initialize virtual cameras
-	gl3state.num_virtual_cameras = 3;
+	gl3state.num_virtual_cameras = 9;
 
-	// Camera 0 (Left): FOV 30, yaw +55
+	// Camera 0 (Top Left): FOV 30x30, yaw +55, pitch +55
 	gl3state.virtual_cameras[0].fov = 30.0f;
+	gl3state.virtual_cameras[0].fov_y = 30.0f;
 	gl3state.virtual_cameras[0].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[0].pitch_offset = 55.0f;
 
-	// Camera 1 (Center): FOV 80, yaw 0
+	// Camera 1 (Top Center): FOV 80x30, yaw 0, pitch +55
 	gl3state.virtual_cameras[1].fov = 80.0f;
+	gl3state.virtual_cameras[1].fov_y = 30.0f;
 	gl3state.virtual_cameras[1].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[1].pitch_offset = 55.0f;
 
-	// Camera 2 (Right): FOV 30, yaw -55
+	// Camera 2 (Top Right): FOV 30x30, yaw -55, pitch +55
 	gl3state.virtual_cameras[2].fov = 30.0f;
+	gl3state.virtual_cameras[2].fov_y = 30.0f;
 	gl3state.virtual_cameras[2].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[2].pitch_offset = 55.0f;
+
+	// Camera 3 (Middle Left): FOV 30x80, yaw +55, pitch 0
+	gl3state.virtual_cameras[3].fov = 30.0f;
+	gl3state.virtual_cameras[3].fov_y = 80.0f;
+	gl3state.virtual_cameras[3].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[3].pitch_offset = 0.0f;
+
+	// Camera 4 (Middle Center): FOV 80x80, yaw 0, pitch 0
+	gl3state.virtual_cameras[4].fov = 80.0f;
+	gl3state.virtual_cameras[4].fov_y = 80.0f;
+	gl3state.virtual_cameras[4].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[4].pitch_offset = 0.0f;
+
+	// Camera 5 (Middle Right): FOV 30x80, yaw -55, pitch 0
+	gl3state.virtual_cameras[5].fov = 30.0f;
+	gl3state.virtual_cameras[5].fov_y = 80.0f;
+	gl3state.virtual_cameras[5].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[5].pitch_offset = 0.0f;
+
+	// Camera 6 (Bottom Left): FOV 30x30, yaw +55, pitch -55
+	gl3state.virtual_cameras[6].fov = 30.0f;
+	gl3state.virtual_cameras[6].fov_y = 30.0f;
+	gl3state.virtual_cameras[6].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[6].pitch_offset = -55.0f;
+
+	// Camera 7 (Bottom Center): FOV 80x30, yaw 0, pitch -55
+	gl3state.virtual_cameras[7].fov = 80.0f;
+	gl3state.virtual_cameras[7].fov_y = 30.0f;
+	gl3state.virtual_cameras[7].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[7].pitch_offset = -55.0f;
+
+	// Camera 8 (Bottom Right): FOV 30x30, yaw -55, pitch -55
+	gl3state.virtual_cameras[8].fov = 30.0f;
+	gl3state.virtual_cameras[8].fov_y = 30.0f;
+	gl3state.virtual_cameras[8].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[8].pitch_offset = -55.0f;
 
 	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 	{
@@ -736,6 +778,7 @@ GL3_Shutdown(void)
 		gl3state.ppFBrbo = gl3state.ppFBtex = gl3state.ppFBO = 0;
 		gl3state.ppFBObound = false;
 		gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
+		gl3state.virtual_pitch_offset = 0.0f;
 
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
@@ -1722,11 +1765,11 @@ SetupGL(void)
 
 		viewMat = HMM_MultiplyMat4( viewMat, rotMat );
 
-		if (gl3state.virtual_yaw_offset != 0.0f)
+		if (gl3state.virtual_yaw_offset != 0.0f || gl3state.virtual_pitch_offset != 0.0f)
 		{
-			// Apply virtual yaw offset purely in local space (panning sideways relative to the camera's up vector)
+			// Apply virtual yaw and pitch offsets purely in local space
 			// This avoids roll distortion when looking up or down.
-			hmm_mat4 offsetMat = rotAroundAxisXYZ(0.0f, -gl3state.virtual_yaw_offset, 0.0f);
+			hmm_mat4 offsetMat = rotAroundAxisXYZ(-gl3state.virtual_pitch_offset, -gl3state.virtual_yaw_offset, 0.0f);
 			viewMat = HMM_MultiplyMat4( offsetMat, viewMat );
 		}
 
@@ -1908,17 +1951,30 @@ GL3_RenderView(refdef_t *fd)
 	R_SetFrustum(vup, vpn, vright, gl3_origin,
 		r_newrefdef.fov_x, r_newrefdef.fov_y, frustum);
 
-	if (gl3state.virtual_yaw_offset != 0.0f)
+	if (gl3state.virtual_yaw_offset != 0.0f || gl3state.virtual_pitch_offset != 0.0f)
 	{
-		// the frustum should also reflect the virtual camera's yaw offset, so culling works correctly.
-		// Rotate vpn and vright by the yaw offset around vup.
-		// Since virtual_yaw_offset is positive for turning left, and RotatePointAroundVector rotates counterclockwise around the axis.
-		vec3_t old_vpn, old_vright;
-		VectorCopy(vpn, old_vpn);
-		VectorCopy(vright, old_vright);
+		// the frustum should also reflect the virtual camera's offsets, so culling works correctly.
+		vec3_t old_vpn, old_vright, old_vup;
 
-		RotatePointAroundVector(vpn, vup, old_vpn, gl3state.virtual_yaw_offset);
-		RotatePointAroundVector(vright, vup, old_vright, gl3state.virtual_yaw_offset);
+		// First apply yaw (rotation around vup)
+		if (gl3state.virtual_yaw_offset != 0.0f)
+		{
+			VectorCopy(vpn, old_vpn);
+			VectorCopy(vright, old_vright);
+
+			RotatePointAroundVector(vpn, vup, old_vpn, gl3state.virtual_yaw_offset);
+			RotatePointAroundVector(vright, vup, old_vright, gl3state.virtual_yaw_offset);
+		}
+
+		// Then apply pitch (rotation around vright)
+		if (gl3state.virtual_pitch_offset != 0.0f)
+		{
+			VectorCopy(vpn, old_vpn);
+			VectorCopy(vup, old_vup);
+
+			RotatePointAroundVector(vpn, vright, old_vpn, gl3state.virtual_pitch_offset);
+			RotatePointAroundVector(vup, vright, old_vup, gl3state.virtual_pitch_offset);
+		}
 
 		R_SetFrustum(vup, vpn, vright, gl3_origin,
 			r_newrefdef.fov_x, r_newrefdef.fov_y, frustum);
@@ -2042,14 +2098,23 @@ GL3_RenderFrame(refdef_t *fd)
 
 		int base_width = r_newrefdef.width;
 		int base_height = r_newrefdef.height;
-		float total_fov = 140.0f; // 30 + 80 + 30
+
+		int w_side = (int)((30.0f / 140.0f) * base_width);
+		int w_center = base_width - 2 * w_side;
+
+		int h_side = (int)((30.0f / 140.0f) * base_height);
+		int h_center = base_height - 2 * h_side;
+		// Calculate center row vertical fov once to use for pitch offset
+		float center_aspect = (float)w_center / (float)h_center;
+		float center_fov_y = 2.0f * atan(tan(80.0f * M_PI / 360.0f) / center_aspect) * 180.0f / M_PI;
+
 
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
 
-			int target_width = (int)((cam->fov / total_fov) * base_width);
-			int target_height = base_height;
+			int target_width = (i % 3 == 1) ? w_center : w_side;
+			int target_height = ((i / 3) == 1) ? h_center : h_side;
 
 			// Setup FBO dimensions if they don't match
 			if (cam->width != target_width || cam->height != target_height)
@@ -2086,17 +2151,25 @@ GL3_RenderFrame(refdef_t *fd)
 			// Create a copy of the refdef specifically for this camera
 			refdef_t cam_fd = *fd;
 			cam_fd.fov_x = cam->fov;
-
 			float aspect = (float)cam->width / (float)cam->height;
-			float fov_x_rad = cam->fov * M_PI / 360.0f;
-			float fov_y_rad = atan(tan(fov_x_rad) / aspect);
-			cam_fd.fov_y = fov_y_rad * 360.0f / M_PI;
+			cam_fd.fov_y = 2.0f * atan(tan(cam->fov * M_PI / 360.0f) / aspect) * 180.0f / M_PI;
+
+			// Calculate dynamic pitch offset so cameras connect vertically
+			if (i / 3 == 0) // Top row
+				gl3state.virtual_pitch_offset = (center_fov_y / 2.0f) + (cam_fd.fov_y / 2.0f);
+			else if (i / 3 == 2) // Bottom row
+				gl3state.virtual_pitch_offset = -((center_fov_y / 2.0f) + (cam_fd.fov_y / 2.0f));
+			else // Middle row
+				gl3state.virtual_pitch_offset = 0.0f;
+
+
 
 			cam_fd.width = cam->width;
 			cam_fd.height = cam->height;
 
-			// Set the yaw offset to be applied in local space during SetupGL
+			// Set the yaw and pitch offsets to be applied in local space during SetupGL
 			gl3state.virtual_yaw_offset = cam->yaw_offset;
+
 
 			// Bind the FBO state so SetupGL knows what to do
 			gl3state.ppFBObound = true;
@@ -2112,6 +2185,7 @@ GL3_RenderFrame(refdef_t *fd)
 	else
 	{
 		gl3state.virtual_yaw_offset = 0.0f;
+		gl3state.virtual_pitch_offset = 0.0f;
 		// Render just the original single view (for menu, etc.)
 		GL3_RenderView(fd);
 		GL3_SetLightLevel(NULL);
@@ -2133,13 +2207,27 @@ GL3_RenderFrame(refdef_t *fd)
 		// Restore the global refdef so other systems aren't confused
 		r_newrefdef = *fd;
 
-		// Draw the multiple cameras' textures on the screen
+		// Draw the multiple cameras' textures on the screen in a 3x3 grid
 		int current_x = x;
+		int current_y = y;
+
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
-			GL3_DrawFrameBufferObject(current_x, y, cam->width, cam->height, cam->tex, v_blend);
+
+			// FBO textures are drawn from bottom to top unless inverted? No, drawTexturedRectangleNow maps y=0 to bottom.
+			// Let's ensure current_y advances per row.
+			// The original loop just did current_x += cam->width.
+			// Since it's a 3x3, after 3 items we reset x and advance y.
+
+			GL3_DrawFrameBufferObject(current_x, current_y, cam->width, cam->height, cam->tex, v_blend);
+
 			current_x += cam->width;
+			if ((i + 1) % 3 == 0) // Next row
+			{
+				current_x = x;
+				current_y += cam->height;
+			}
 		}
 	}
 	else

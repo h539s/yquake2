@@ -203,7 +203,9 @@ enum {
 
 typedef struct {
 	float fov;
+	float fov_y;
 	float yaw_offset;
+	float pitch_offset;
 	int width;
 	int height;
 	GLuint fbo;
@@ -284,9 +286,10 @@ typedef struct
 	hmm_mat4 projMat3D;
 	hmm_mat4 viewMat3D;
 
-	virtual_camera_t virtual_cameras[3];
+	virtual_camera_t virtual_cameras[9];
 	int num_virtual_cameras;
 	float virtual_yaw_offset;
+	float virtual_pitch_offset;
 } gl3state_t;
 
 

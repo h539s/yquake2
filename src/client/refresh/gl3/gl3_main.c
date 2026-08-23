@@ -678,6 +678,31 @@ GL3_Init(void)
 	// take the viewsize into account (enforce that by setting invalid size)
 	gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
 
+	// Initialize virtual cameras
+	gl3state.num_virtual_cameras = 3;
+
+	// Camera 0 (Left): FOV 30, yaw +55
+	gl3state.virtual_cameras[0].fov = 30.0f;
+	gl3state.virtual_cameras[0].yaw_offset = 55.0f;
+
+	// Camera 1 (Center): FOV 80, yaw 0
+	gl3state.virtual_cameras[1].fov = 80.0f;
+	gl3state.virtual_cameras[1].yaw_offset = 0.0f;
+
+	// Camera 2 (Right): FOV 30, yaw -55
+	gl3state.virtual_cameras[2].fov = 30.0f;
+	gl3state.virtual_cameras[2].yaw_offset = -55.0f;
+
+	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+	{
+		gl3state.virtual_cameras[i].width = -1;
+		gl3state.virtual_cameras[i].height = -1;
+
+		glGenFramebuffers(1, &gl3state.virtual_cameras[i].fbo);
+		glGenTextures(1, &gl3state.virtual_cameras[i].tex);
+		glGenRenderbuffers(1, &gl3state.virtual_cameras[i].rbo);
+	}
+
 	Com_Printf("\n");
 	return true;
 }
@@ -711,6 +736,18 @@ GL3_Shutdown(void)
 		gl3state.ppFBrbo = gl3state.ppFBtex = gl3state.ppFBO = 0;
 		gl3state.ppFBObound = false;
 		gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
+
+		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+		{
+			if(gl3state.virtual_cameras[i].rbo != 0)
+				glDeleteRenderbuffers(1, &gl3state.virtual_cameras[i].rbo);
+			if(gl3state.virtual_cameras[i].tex != 0)
+				glDeleteTextures(1, &gl3state.virtual_cameras[i].tex);
+			if(gl3state.virtual_cameras[i].fbo != 0)
+				glDeleteFramebuffers(1, &gl3state.virtual_cameras[i].fbo);
+			gl3state.virtual_cameras[i].rbo = gl3state.virtual_cameras[i].tex = gl3state.virtual_cameras[i].fbo = 0;
+		}
+		gl3state.num_virtual_cameras = 0;
 	}
 
 	da_free(vtxBuf);
@@ -1650,80 +1687,17 @@ SetupGL(void)
 	w = x2 - x;
 	h = y - y2;
 
-#if 0 // TODO: stereo stuff
-	qboolean drawing_left_eye = gl_state.camera_separation < 0;
-	qboolean stereo_split_tb = ((gl_state.stereo_mode == STEREO_SPLIT_VERTICAL) && gl_state.camera_separation);
-	qboolean stereo_split_lr = ((gl_state.stereo_mode == STEREO_SPLIT_HORIZONTAL) && gl_state.camera_separation);
-
-	if(stereo_split_lr) {
-		w = w / 2;
-		x = drawing_left_eye ? (x / 2) : (x + vid.width) / 2;
-	}
-
-	if(stereo_split_tb) {
-		h = h / 2;
-		y2 = drawing_left_eye ? (y2 + vid.height) / 2 : (y2 / 2);
-	}
-#endif // 0
-
-	// set up the FBO accordingly, but only if actually rendering the world
-	// (=> don't use FBO when rendering the playermodel in the player menu)
-	// also, only do this when under water, because this has a noticeable overhead on some systems
-	if (gl3_usefbo->value && gl3state.ppFBO != 0
-		&& (r_newrefdef.rdflags & (RDF_NOWORLDMODEL|RDF_UNDERWATER)) == RDF_UNDERWATER)
+	// In multi-camera setup, we always use the virtual camera's FBO for rendering the world.
+	// We assume that the currently bound FBO (and viewport) was set *before* calling SetupGL
+	// during the multi-camera loop, EXCEPT if we are rendering something else (like playermodel in menu)
+	// where RDF_NOWORLDMODEL is set.
+	if (!(r_newrefdef.rdflags & RDF_NOWORLDMODEL))
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, gl3state.ppFBO);
-		gl3state.ppFBObound = true;
-		if(gl3state.ppFBtex == 0)
-		{
-			gl3state.ppFBtexWidth = -1; // make sure we generate the texture storage below
-			glGenTextures(1, &gl3state.ppFBtex);
-		}
-
-		if(gl3state.ppFBrbo == 0)
-		{
-			gl3state.ppFBtexWidth = -1; // make sure we generate the RBO storage below
-			glGenRenderbuffers(1, &gl3state.ppFBrbo);
-		}
-
-		// even if the FBO already has a texture and RBO, the viewport size
-		// might have changed so they need to be regenerated with the correct sizes
-		if(gl3state.ppFBtexWidth != w || gl3state.ppFBtexHeight != h)
-		{
-			gl3state.ppFBtexWidth = w;
-			gl3state.ppFBtexHeight = h;
-			GL3_Bind(gl3state.ppFBtex);
-			// create texture for FBO with size of the viewport
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			GL3_Bind(0);
-			// attach it to currently bound FBO
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl3state.ppFBtex, 0);
-
-			// also create a renderbuffer object so the FBO has a stencil- and depth-buffer
-			glBindRenderbuffer(GL_RENDERBUFFER, gl3state.ppFBrbo);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
-			glBindRenderbuffer(GL_RENDERBUFFER, 0);
-			// attach it to the FBO
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-			                          GL_RENDERBUFFER, gl3state.ppFBrbo);
-
-			GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-			if(fbState != GL_FRAMEBUFFER_COMPLETE)
-			{
-				Com_Printf("GL3 SetupGL(): WARNING: FBO is not complete, status = 0x%x\n", fbState);
-				gl3state.ppFBtexWidth = -1; // to try again next frame; TODO: maybe give up?
-				gl3state.ppFBObound = false;
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			}
-		}
-
-		GL3_Clear(); // clear the FBO that's bound now
-
-		glViewport(0, 0, w, h); // this will be moved to the center later, so no x/y offset
+		// FBO and viewport are already set in the RenderFrame loop for each camera.
+		// We still need to clear the bound FBO.
+		GL3_Clear();
 	}
-	else // rendering directly (not to FBO for postprocessing)
+	else
 	{
 		glViewport(x, y2, w, h);
 	}
@@ -1747,6 +1721,14 @@ SetupGL(void)
 		hmm_mat4 rotMat = rotAroundAxisXYZ(-r_newrefdef.viewangles[2], -r_newrefdef.viewangles[0], -r_newrefdef.viewangles[1]);
 
 		viewMat = HMM_MultiplyMat4( viewMat, rotMat );
+
+		if (gl3state.virtual_yaw_offset != 0.0f)
+		{
+			// Apply virtual yaw offset purely in local space (panning sideways relative to the camera's up vector)
+			// This avoids roll distortion when looking up or down.
+			hmm_mat4 offsetMat = rotAroundAxisXYZ(0.0f, -gl3state.virtual_yaw_offset, 0.0f);
+			viewMat = HMM_MultiplyMat4( offsetMat, viewMat );
+		}
 
 		// .. and apply translation for current position
 		hmm_vec3 trans = HMM_Vec3(-r_newrefdef.vieworg[0], -r_newrefdef.vieworg[1], -r_newrefdef.vieworg[2]);
@@ -1926,6 +1908,22 @@ GL3_RenderView(refdef_t *fd)
 	R_SetFrustum(vup, vpn, vright, gl3_origin,
 		r_newrefdef.fov_x, r_newrefdef.fov_y, frustum);
 
+	if (gl3state.virtual_yaw_offset != 0.0f)
+	{
+		// the frustum should also reflect the virtual camera's yaw offset, so culling works correctly.
+		// Rotate vpn and vright by the yaw offset around vup.
+		// Since virtual_yaw_offset is positive for turning left, and RotatePointAroundVector rotates counterclockwise around the axis.
+		vec3_t old_vpn, old_vright;
+		VectorCopy(vpn, old_vpn);
+		VectorCopy(vright, old_vright);
+
+		RotatePointAroundVector(vpn, vup, old_vpn, gl3state.virtual_yaw_offset);
+		RotatePointAroundVector(vright, vup, old_vright, gl3state.virtual_yaw_offset);
+
+		R_SetFrustum(vup, vpn, vright, gl3_origin,
+			r_newrefdef.fov_x, r_newrefdef.fov_y, frustum);
+	}
+
 	SetupGL();
 
 	GL3_MarkLeaves(); /* done here so we know if we're in water */
@@ -2038,26 +2036,119 @@ GL3_RenderFrame(refdef_t *fd)
 	// for the player model in the multiplayer player setup menu)
 	GL3_DrawCurrent2Dbatch();
 
-	GL3_RenderView(fd);
-	GL3_SetLightLevel(NULL);
-	qboolean usedFBO = gl3state.ppFBObound; // if it was/is used this frame
-	if(usedFBO)
+	if (!(fd->rdflags & RDF_NOWORLDMODEL))
 	{
-		glBindFramebuffer(GL_FRAMEBUFFER, 0); // now render to default framebuffer
+		// Draw the world with the multi-camera setup
+
+		int base_width = r_newrefdef.width;
+		int base_height = r_newrefdef.height;
+		float total_fov = 140.0f; // 30 + 80 + 30
+
+		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+		{
+			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
+
+			int target_width = (int)((cam->fov / total_fov) * base_width);
+			int target_height = base_height;
+
+			// Setup FBO dimensions if they don't match
+			if (cam->width != target_width || cam->height != target_height)
+			{
+				cam->width = target_width;
+				cam->height = target_height;
+
+				GL3_Bind(cam->tex);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam->width, cam->height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				GL3_Bind(0);
+
+				glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cam->tex, 0);
+
+				glBindRenderbuffer(GL_RENDERBUFFER, cam->rbo);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, cam->width, cam->height);
+				glBindRenderbuffer(GL_RENDERBUFFER, 0);
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, cam->rbo);
+
+				GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+				if (fbState != GL_FRAMEBUFFER_COMPLETE)
+				{
+					Com_Printf("GL3 Multi-camera WARNING: FBO is not complete, status = 0x%x\n", fbState);
+				}
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
+
+			// Clear this FBO specifically before rendering
+			glViewport(0, 0, cam->width, cam->height);
+
+			// Create a copy of the refdef specifically for this camera
+			refdef_t cam_fd = *fd;
+			cam_fd.fov_x = cam->fov;
+
+			float aspect = (float)cam->width / (float)cam->height;
+			float fov_x_rad = cam->fov * M_PI / 360.0f;
+			float fov_y_rad = atan(tan(fov_x_rad) / aspect);
+			cam_fd.fov_y = fov_y_rad * 360.0f / M_PI;
+
+			cam_fd.width = cam->width;
+			cam_fd.height = cam->height;
+
+			// Set the yaw offset to be applied in local space during SetupGL
+			gl3state.virtual_yaw_offset = cam->yaw_offset;
+
+			// Bind the FBO state so SetupGL knows what to do
+			gl3state.ppFBObound = true;
+
+			GL3_RenderView(&cam_fd);
+			GL3_SetLightLevel(NULL);
+		}
+
+		// Reset FBO binding
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		gl3state.ppFBObound = false;
 	}
+	else
+	{
+		gl3state.virtual_yaw_offset = 0.0f;
+		// Render just the original single view (for menu, etc.)
+		GL3_RenderView(fd);
+		GL3_SetLightLevel(NULL);
+		qboolean usedFBO = gl3state.ppFBObound;
+		if(usedFBO)
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			gl3state.ppFBObound = false;
+		}
+	}
+
 	GL3_SetGL2D();
 
-	int x = (vid.width - r_newrefdef.width)/2;
-	int y = (vid.height - r_newrefdef.height)/2;
-	if (usedFBO)
+	int x = (vid.width - fd->width)/2;
+	int y = (vid.height - fd->height)/2;
+
+	if (!(fd->rdflags & RDF_NOWORLDMODEL))
 	{
-		// if we're actually drawing the world and using an FBO, render the FBO's texture
-		GL3_DrawFrameBufferObject(x, y, r_newrefdef.width, r_newrefdef.height, gl3state.ppFBtex, v_blend);
+		// Restore the global refdef so other systems aren't confused
+		r_newrefdef = *fd;
+
+		// Draw the multiple cameras' textures on the screen
+		int current_x = x;
+		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+		{
+			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
+			GL3_DrawFrameBufferObject(current_x, y, cam->width, cam->height, cam->tex, v_blend);
+			current_x += cam->width;
+		}
 	}
-	else if(v_blend[3] != 0.0f)
+	else
 	{
-		GL3_Draw_Flash(v_blend, x, y, r_newrefdef.width, r_newrefdef.height);
+		// In case we used the single camera mode (menu, player model)
+		if(v_blend[3] != 0.0f)
+		{
+			GL3_Draw_Flash(v_blend, x, y, r_newrefdef.width, r_newrefdef.height);
+		}
 	}
 }
 
@@ -2068,7 +2159,7 @@ GL3_Clear(void)
 	// Define which buffers need clearing
 	GLbitfield clearFlags = GL_DEPTH_BUFFER_BIT;
 
-	if (r_clear->value)
+	if (r_clear->value || gl3state.ppFBObound)
 	{
 		clearFlags |= GL_COLOR_BUFFER_BIT;
 	}

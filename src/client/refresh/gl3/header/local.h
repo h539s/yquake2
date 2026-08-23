@@ -201,6 +201,16 @@ enum {
 	MAX_LIGHTMAPS_PER_SURFACE = MAXLIGHTMAPS // 4
 };
 
+typedef struct {
+	float fov;
+	float yaw_offset;
+	int width;
+	int height;
+	GLuint fbo;
+	GLuint tex;
+	GLuint rbo;
+} virtual_camera_t;
+
 typedef struct
 {
 	// TODO: what of this do we need?
@@ -273,6 +283,10 @@ typedef struct
 
 	hmm_mat4 projMat3D;
 	hmm_mat4 viewMat3D;
+
+	virtual_camera_t virtual_cameras[3];
+	int num_virtual_cameras;
+	float virtual_yaw_offset;
 } gl3state_t;
 
 

@@ -2067,9 +2067,9 @@ GL3_RenderFrame(refdef_t *fd)
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cam->tex, 0);
 
 				glBindRenderbuffer(GL_RENDERBUFFER, cam->rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, cam->width, cam->height);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, cam->width, cam->height);
 				glBindRenderbuffer(GL_RENDERBUFFER, 0);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, cam->rbo);
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cam->rbo);
 
 				GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 				if (fbState != GL_FRAMEBUFFER_COMPLETE)

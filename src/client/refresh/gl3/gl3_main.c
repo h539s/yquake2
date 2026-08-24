@@ -106,6 +106,9 @@ cvar_t *gl3_overbrightbits;
 
 cvar_t *r_norefresh;
 cvar_t *r_drawentities;
+static void GL3_DrawEntitiesOnList(qboolean is_weapon_pass);
+static void SetupGL(void);
+static void GL3_SetGL2D(void);
 cvar_t *r_drawworld;
 cvar_t *gl_nolerp_list;
 cvar_t *r_lerp_list;
@@ -1413,7 +1416,7 @@ GL3_DrawParticles(void)
 }
 
 static void
-GL3_DrawEntitiesOnList(void)
+GL3_DrawEntitiesOnList(qboolean is_weapon_pass)
 {
 	int i;
 
@@ -1428,6 +1431,15 @@ GL3_DrawEntitiesOnList(void)
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
 		entity_t *currententity = &r_newrefdef.entities[i];
+
+		if (is_weapon_pass && !(currententity->flags & RF_WEAPONMODEL))
+		{
+			continue;
+		}
+		if (!is_weapon_pass && (currententity->flags & RF_WEAPONMODEL))
+		{
+			continue;
+		}
 
 		if (currententity->flags & RF_TRANSLUCENT)
 		{
@@ -1478,6 +1490,15 @@ GL3_DrawEntitiesOnList(void)
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
 		entity_t *currententity = &r_newrefdef.entities[i];
+
+		if (is_weapon_pass && !(currententity->flags & RF_WEAPONMODEL))
+		{
+			continue;
+		}
+		if (!is_weapon_pass && (currententity->flags & RF_WEAPONMODEL))
+		{
+			continue;
+		}
 
 		if (!(currententity->flags & RF_TRANSLUCENT))
 		{
@@ -1986,7 +2007,7 @@ GL3_RenderView(refdef_t *fd)
 
 	GL3_DrawWorld();
 
-	GL3_DrawEntitiesOnList();
+	GL3_DrawEntitiesOnList(gl3state.is_weapon_pass);
 
 	// kick the silly gl1_flashblend poly lights
 	// GL3_RenderDlights();
@@ -2229,6 +2250,26 @@ GL3_RenderFrame(refdef_t *fd)
 				current_y += cam->height;
 			}
 		}
+
+		// Now render the weapon model on top of everything, using the original camera
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		gl3state.virtual_yaw_offset = 0.0f;
+		gl3state.virtual_pitch_offset = 0.0f;
+		gl3state.ppFBObound = false;
+
+
+		SetupGL();
+
+		gl3state.is_weapon_pass = true;
+
+		GL3_DrawEntitiesOnList(gl3state.is_weapon_pass);
+		GL3_Draw3DBatchesNow();
+		gl3state.is_weapon_pass = false;
+
+		// Set 2D back up as it might have been mangled
+
+		GL3_SetGL2D();
 	}
 	else
 	{

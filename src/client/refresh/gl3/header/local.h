@@ -290,6 +290,7 @@ typedef struct
 	int num_virtual_cameras;
 	float virtual_yaw_offset;
 	float virtual_pitch_offset;
+	qboolean is_weapon_pass;
 } gl3state_t;
 
 

@@ -1,0 +1,81 @@
+<<<<<<< SEARCH
+	// Initialize virtual cameras
+	gl3state.num_virtual_cameras = 9;
+
+	// Camera 0 (Top Left): FOV 30x30, yaw +55, pitch +55
+	gl3state.virtual_cameras[0].fov = 30.0f;
+	gl3state.virtual_cameras[0].fov_y = 30.0f;
+	gl3state.virtual_cameras[0].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[0].pitch_offset = 55.0f;
+
+	// Camera 1 (Top Center): FOV 80x30, yaw 0, pitch +55
+	gl3state.virtual_cameras[1].fov = 80.0f;
+	gl3state.virtual_cameras[1].fov_y = 30.0f;
+	gl3state.virtual_cameras[1].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[1].pitch_offset = 55.0f;
+
+	// Camera 2 (Top Right): FOV 30x30, yaw -55, pitch +55
+	gl3state.virtual_cameras[2].fov = 30.0f;
+	gl3state.virtual_cameras[2].fov_y = 30.0f;
+	gl3state.virtual_cameras[2].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[2].pitch_offset = 55.0f;
+
+	// Camera 3 (Middle Left): FOV 30x80, yaw +55, pitch 0
+	gl3state.virtual_cameras[3].fov = 30.0f;
+	gl3state.virtual_cameras[3].fov_y = 80.0f;
+	gl3state.virtual_cameras[3].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[3].pitch_offset = 0.0f;
+
+	// Camera 4 (Middle Center): FOV 80x80, yaw 0, pitch 0
+	gl3state.virtual_cameras[4].fov = 80.0f;
+	gl3state.virtual_cameras[4].fov_y = 80.0f;
+	gl3state.virtual_cameras[4].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[4].pitch_offset = 0.0f;
+
+	// Camera 5 (Middle Right): FOV 30x80, yaw -55, pitch 0
+	gl3state.virtual_cameras[5].fov = 30.0f;
+	gl3state.virtual_cameras[5].fov_y = 80.0f;
+	gl3state.virtual_cameras[5].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[5].pitch_offset = 0.0f;
+
+	// Camera 6 (Bottom Left): FOV 30x30, yaw +55, pitch -55
+	gl3state.virtual_cameras[6].fov = 30.0f;
+	gl3state.virtual_cameras[6].fov_y = 30.0f;
+	gl3state.virtual_cameras[6].yaw_offset = 55.0f;
+	gl3state.virtual_cameras[6].pitch_offset = -55.0f;
+
+	// Camera 7 (Bottom Center): FOV 80x30, yaw 0, pitch -55
+	gl3state.virtual_cameras[7].fov = 80.0f;
+	gl3state.virtual_cameras[7].fov_y = 30.0f;
+	gl3state.virtual_cameras[7].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[7].pitch_offset = -55.0f;
+
+	// Camera 8 (Bottom Right): FOV 30x30, yaw -55, pitch -55
+	gl3state.virtual_cameras[8].fov = 30.0f;
+	gl3state.virtual_cameras[8].fov_y = 30.0f;
+	gl3state.virtual_cameras[8].yaw_offset = -55.0f;
+	gl3state.virtual_cameras[8].pitch_offset = -55.0f;
+=======
+	// Initialize virtual cameras
+	gl3state.num_virtual_cameras = 5;
+
+	// Camera 0 (Center)
+	gl3state.virtual_cameras[0].yaw_offset = 0.0f;
+	gl3state.virtual_cameras[0].pitch_offset = 0.0f;
+
+	// Camera 1 (Top)
+	gl3state.virtual_cameras[1].yaw_offset = 0.0f;
+	// pitch_offset will be calculated dynamically based on aspect ratio in RenderFrame
+
+	// Camera 2 (Bottom)
+	gl3state.virtual_cameras[2].yaw_offset = 0.0f;
+	// pitch_offset dynamic
+
+	// Camera 3 (Left)
+	gl3state.virtual_cameras[3].yaw_offset = 90.0f;
+	gl3state.virtual_cameras[3].pitch_offset = 0.0f;
+
+	// Camera 4 (Right)
+	gl3state.virtual_cameras[4].yaw_offset = -90.0f;
+	gl3state.virtual_cameras[4].pitch_offset = 0.0f;
+>>>>>>> REPLACE

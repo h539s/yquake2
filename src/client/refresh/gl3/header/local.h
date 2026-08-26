@@ -251,6 +251,7 @@ typedef struct
 	gl3ShaderInfo_t si2Dcolor; // shader for rendering 2D with flat colors
 	gl3ShaderInfo_t si2DpostProcess; // shader to render postprocess FBO, when *not* underwater
 	gl3ShaderInfo_t si2DpostProcessWater; // shader to apply water-warp postprocess effect
+	gl3ShaderInfo_t si2DpostProcessFisheye;
 
 	gl3ShaderInfo_t si3Dlm;        // a regular opaque face (e.g. from brush) with lightmap
 	// TODO: lm-only variants for gl_lightmap 1

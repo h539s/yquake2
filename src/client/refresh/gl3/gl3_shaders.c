@@ -290,6 +290,110 @@ static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
 		}
 );
 
+static const char* fragmentSrc2DpostprocessFisheye = MULTILINE_STRING(
+		in vec2 passTexCoord;
+
+		layout (std140) uniform uniCommon
+		{
+			float gamma;
+			float intensity;
+			float intensity2D; // for HUD, menu etc
+
+			vec4 color;
+		};
+
+		uniform sampler2D texFront;
+		uniform sampler2D texRight;
+		uniform sampler2D texBack;
+		uniform sampler2D texLeft;
+		uniform sampler2D texTop;
+		uniform sampler2D texBottom;
+
+		uniform vec4 v_blend;
+		uniform float fov;
+		uniform vec2 resolution;
+
+		out vec4 outColor;
+
+		void main()
+		{
+			// Normalized screen coordinates from -1 to 1
+			vec2 uv = passTexCoord * 2.0 - 1.0;
+
+			// Correct for aspect ratio
+			float aspect = resolution.x / resolution.y;
+			uv.x *= aspect;
+
+			// Radius of current pixel from center
+			float r = length(uv);
+
+			// Convert game FOV (horizontal) to radians
+			float fov_rad = fov * 3.14159265359 / 180.0;
+
+			// Define the max radius based on the FOV.
+			// We want r=1 (top/bottom edge) to correspond to fov_rad/2
+			float theta = r * (fov_rad / 2.0);
+
+			// Spherical to Cartesian coordinates for the view ray
+			float phi = atan(uv.y, uv.x);
+
+			// View vector in 3D
+			vec3 dir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+
+			vec3 q_dir = vec3(dir.z, -dir.x, -dir.y);
+
+			// Find dominant axis to select cubemap face
+			vec3 abs_dir = abs(q_dir);
+
+			vec2 sample_uv;
+			vec4 res;
+
+			if(abs_dir.x >= abs_dir.y && abs_dir.x >= abs_dir.z)
+			{
+				if(q_dir.x > 0.0) { // Front (+X)
+					sample_uv = vec2(-q_dir.y / q_dir.x, -q_dir.z / q_dir.x);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texFront, sample_uv);
+				} else { // Back (-X)
+					sample_uv = vec2(q_dir.y / q_dir.x, q_dir.z / q_dir.x);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texBack, sample_uv);
+				}
+			}
+			else if(abs_dir.y >= abs_dir.x && abs_dir.y >= abs_dir.z)
+			{
+				if(q_dir.y > 0.0) { // Left (+Y)
+					sample_uv = vec2(q_dir.x / q_dir.y, -q_dir.z / q_dir.y);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texLeft, sample_uv);
+				} else { // Right (-Y)
+					sample_uv = vec2(-q_dir.x / q_dir.y, q_dir.z / q_dir.y);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texRight, sample_uv);
+				}
+			}
+			else
+			{
+				if(q_dir.z > 0.0) { // Top (+Z)
+					sample_uv = vec2(-q_dir.y / q_dir.z, q_dir.x / q_dir.z);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texTop, sample_uv);
+				} else { // Bottom (-Z)
+					sample_uv = vec2(-q_dir.y / q_dir.z, -q_dir.x / q_dir.z);
+					sample_uv = sample_uv * 0.5 + 0.5;
+					res = texture(texBottom, sample_uv);
+				}
+			}
+
+			if(theta > 3.14159265359) {
+				res = vec4(0.0, 0.0, 0.0, 1.0);
+			}
+
+			res.rgb = v_blend.a * v_blend.rgb + (1.0 - v_blend.a)*res.rgb;
+			outColor = res;
+		}
+);
+
 static const char* fragmentSrc2DpostprocessWater = MULTILINE_STRING(
 		in vec2 passTexCoord;
 
@@ -1245,6 +1349,11 @@ static qboolean createShaders(void)
 	if(!initShader2D(&gl3state.si2DpostProcess, vertexSrc2D, fragmentSrc2Dpostprocess))
 	{
 		Com_Printf("WARNING: Failed to create shader program to render framebuffer object!\n");
+		return false;
+	}
+	if(!initShader2D(&gl3state.si2DpostProcessFisheye, vertexSrc2D, fragmentSrc2DpostprocessFisheye))
+	{
+		Com_Printf("WARNING: Failed to create shader program to render fisheye framebuffer object!\n");
 		return false;
 	}
 	if(!initShader2D(&gl3state.si2DpostProcessWater, vertexSrc2D, fragmentSrc2DpostprocessWater))

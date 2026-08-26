@@ -597,3 +597,55 @@ void GL3_EndFrame(void)
 
 	GL3_SwapWindow();
 }
+
+void
+GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4])
+{
+	gl3ShaderInfo_t* shader = &gl3state.si2DpostProcessFisheye;
+
+	GL3_UseProgram(shader->shaderProgram);
+
+	// Bind the 6 FBO textures to GL_TEXTURE0 .. GL_TEXTURE5
+	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+	{
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(GL_TEXTURE_2D, gl3state.virtual_cameras[i].tex);
+	}
+
+	if(shader->uniVblend != -1)
+	{
+		glUniform4fv(shader->uniVblend, 1, v_blend);
+	}
+
+	GLint fovLoc = glGetUniformLocation(shader->shaderProgram, "fov");
+	if(fovLoc != -1)
+	{
+		glUniform1f(fovLoc, r_newrefdef.fov_x);
+	}
+
+	// The shader needs to know which texture units correspond to which face
+	GLint texLoc0 = glGetUniformLocation(shader->shaderProgram, "texFront");
+	GLint texLoc1 = glGetUniformLocation(shader->shaderProgram, "texRight");
+	GLint texLoc2 = glGetUniformLocation(shader->shaderProgram, "texBack");
+	GLint texLoc3 = glGetUniformLocation(shader->shaderProgram, "texLeft");
+	GLint texLoc4 = glGetUniformLocation(shader->shaderProgram, "texTop");
+	GLint texLoc5 = glGetUniformLocation(shader->shaderProgram, "texBottom");
+	if(texLoc0 != -1) glUniform1i(texLoc0, 0);
+	if(texLoc1 != -1) glUniform1i(texLoc1, 1);
+	if(texLoc2 != -1) glUniform1i(texLoc2, 2);
+	if(texLoc3 != -1) glUniform1i(texLoc3, 3);
+	if(texLoc4 != -1) glUniform1i(texLoc4, 4);
+	if(texLoc5 != -1) glUniform1i(texLoc5, 5);
+
+	// Also we need width/height of screen so we can correctly compute normalized coordinates
+	GLint resLoc = glGetUniformLocation(shader->shaderProgram, "resolution");
+	if(resLoc != -1)
+	{
+		glUniform2f(resLoc, (float)w, (float)h);
+	}
+
+	drawTexturedRectangleNow(x, y, w, h, 0, 1, 1, 0);
+
+	// reset active texture
+	glActiveTexture(GL_TEXTURE0);
+}

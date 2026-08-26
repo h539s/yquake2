@@ -173,7 +173,6 @@ static const char* vertexSrc2D = MULTILINE_STRING(
 
 		in vec2 position; // GL3_ATTRIB_POSITION
 		in vec2 texCoord; // GL3_ATTRIB_TEXCOORD
-		in float qCoord; // GL3_ATTRIB_QCOORD
 
 		// for UBO shared between 2D shaders
 		layout (std140) uniform uni2D

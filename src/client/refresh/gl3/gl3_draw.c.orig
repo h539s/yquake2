@@ -203,11 +203,11 @@ drawTexturedRectangleNow(float x, float y, float w, float h,
 		GL3_Scrap_Upload();
 
 	gl3_drawVert2D vBuf[4] = {
-	//    X,   Y,   S,  T,  Q
-		{ x,   y+h, sl, th, 1.0f },
-		{ x,   y,   sl, tl, 1.0f },
-		{ x+w, y+h, sh, th, 1.0f },
-		{ x+w, y,   sh, tl, 1.0f }
+	//    X,   Y,   S,  T
+		{ x,   y+h, sl, th },
+		{ x,   y,   sl, tl },
+		{ x+w, y+h, sh, th },
+		{ x+w, y,   sh, tl }
 	};
 
 	GL3_BindVAO(vao2D);

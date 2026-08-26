@@ -1,0 +1,44 @@
+--- src/client/refresh/gl3/gl3_shaders.c
++++ src/client/refresh/gl3/gl3_shaders.c
+@@ -171,11 +171,12 @@
+ static const char* vertexSrc2D = MULTILINE_STRING(
+
+		in vec2 position; // GL3_ATTRIB_POSITION
+		in vec2 texCoord; // GL3_ATTRIB_TEXCOORD
++		in float qCoord; // GL3_ATTRIB_QCOORD
+
+		// for UBO shared between 2D shaders
+		layout (std140) uniform uni2D
+		{
+			mat4 trans;
+		};
+
+-		out vec2 passTexCoord;
++		out vec3 passTexCoord;
+
+		void main()
+		{
+			gl_Position = trans * vec4(position, 0.0, 1.0);
+-			passTexCoord = texCoord;
++			passTexCoord = vec3(texCoord * qCoord, qCoord);
+		}
+ );
+
+@@ -262,7 +263,7 @@
+ );
+
+ static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
+-		in vec2 passTexCoord;
++		in vec3 passTexCoord;
+
+		// for UBO shared between all shaders (incl. 2D)
+		// TODO: not needed here, remove?
+@@ -282,7 +283,7 @@
+		{
+			// no gamma or intensity here, it has been applied before
+			// (this is just for postprocessing)
+-			vec4 res = texture(tex, passTexCoord);
++			vec4 res = textureProj(tex, passTexCoord);
+			// apply the v_blend, usually blended as a colored quad with:
+			// glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			res.rgb = v_blend.a * v_blend.rgb + (1.0 - v_blend.a)*res.rgb;

@@ -2086,15 +2086,17 @@ GL3_RenderFrame(refdef_t *fd)
 		int base_width = r_newrefdef.width;
 		int base_height = r_newrefdef.height;
 
-		int target_width = base_width / 3;
-		int target_height = base_height / 3;
+		// Use a large enough square resolution for quality
+		int sq_fbo_res = (base_width > base_height) ? base_width / 2 : base_height / 2;
 
-		float aspect = (float)target_width / (float)target_height;
+		int target_width = sq_fbo_res;
+		int target_height = sq_fbo_res;
+
 		float target_fov_x = 90.0f;
-		float target_fov_y = 2.0f * atan(tan(target_fov_x * M_PI / 360.0f) / aspect) * 180.0f / M_PI;
+		float target_fov_y = 90.0f;
 
-		gl3state.virtual_cameras[1].pitch_offset = target_fov_y;
-		gl3state.virtual_cameras[2].pitch_offset = -target_fov_y;
+		gl3state.virtual_cameras[1].pitch_offset = 90.0f;
+		gl3state.virtual_cameras[2].pitch_offset = -90.0f;
 
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
@@ -2183,46 +2185,54 @@ GL3_RenderFrame(refdef_t *fd)
 		// Restore the global refdef so other systems aren't confused
 		r_newrefdef = *fd;
 
-		// Draw the multiple cameras' textures on the screen with trapezoids
-		int center_w = fd->width / 3;
-		int center_h = fd->height / 3;
+		// Draw the multiple cameras' textures on the screen with trapezoids forming a perfect cube.
+		// We use a square size of 1/3 of the width.
+		// The trapzoids project from the center square to an imaginary outer square of size 3*sq_size.
+		// The edges that fall outside the screen (height) are automatically cropped by the viewport.
+		int sq_size = fd->width / 3;
 
-		int cx = x + center_w;
-		int cy = y + center_h;
+		int cx = x + (fd->width - sq_size) / 2;
+		int cy = y + (fd->height - sq_size) / 2;
 
 		// Center
-		GL3_DrawFrameBufferObject(cx, cy, center_w, center_h, gl3state.virtual_cameras[0].tex, v_blend);
+		GL3_DrawFrameBufferObject(cx, cy, sq_size, sq_size, gl3state.virtual_cameras[0].tex, v_blend);
+
+		// The bounding box of the entire unfolded cube (3x3 grid)
+		int out_left = cx - sq_size;
+		int out_right = cx + 2 * sq_size;
+		int out_bottom = cy - sq_size;
+		int out_top = cy + 2 * sq_size;
 
 		// Top
 		GL3_DrawFrameBufferObjectTrapezoid(
-			x, y + fd->height,
-			cx, cy + center_h,
-			cx + center_w, cy + center_h,
-			x + fd->width, y + fd->height,
+			out_left, out_top,
+			cx, cy + sq_size,
+			cx + sq_size, cy + sq_size,
+			out_right, out_top,
 			gl3state.virtual_cameras[1].tex, v_blend);
 
 		// Bottom
 		GL3_DrawFrameBufferObjectTrapezoid(
 			cx, cy,
-			x, y,
-			x + fd->width, y,
-			cx + center_w, cy,
+			out_left, out_bottom,
+			out_right, out_bottom,
+			cx + sq_size, cy,
 			gl3state.virtual_cameras[2].tex, v_blend);
 
 		// Left
 		GL3_DrawFrameBufferObjectTrapezoid(
-			x, y + fd->height,
-			x, y,
+			out_left, out_top,
+			out_left, out_bottom,
 			cx, cy,
-			cx, cy + center_h,
+			cx, cy + sq_size,
 			gl3state.virtual_cameras[3].tex, v_blend);
 
 		// Right
 		GL3_DrawFrameBufferObjectTrapezoid(
-			cx + center_w, cy + center_h,
-			cx + center_w, cy,
-			x + fd->width, y,
-			x + fd->width, y + fd->height,
+			cx + sq_size, cy + sq_size,
+			cx + sq_size, cy,
+			out_right, out_bottom,
+			out_right, out_top,
 			gl3state.virtual_cameras[4].tex, v_blend);
 
 		// Now render the weapon model on top of everything, using the original camera

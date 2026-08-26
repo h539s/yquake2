@@ -2134,8 +2134,8 @@ GL3_RenderFrame(refdef_t *fd)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
 
-			int target_width = (i % 3 == 1) ? w_center : w_side;
-			int target_height = ((i / 3) == 1) ? h_center : h_side;
+			int target_width = (i % 3 == 1) ? (w_center > 0 ? w_center : 1) : (w_side > 0 ? w_side : 1);
+			int target_height = ((i / 3) == 1) ? (h_center > 0 ? h_center : 1) : (h_side > 0 ? h_side : 1);
 
 			// Setup FBO dimensions if they don't match
 			if (cam->width != target_width || cam->height != target_height)
@@ -2143,11 +2143,13 @@ GL3_RenderFrame(refdef_t *fd)
 				cam->width = target_width;
 				cam->height = target_height;
 
-				GL3_Bind(cam->tex);
+				glBindTexture(GL_TEXTURE_2D, cam->tex);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam->width, cam->height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				GL3_Bind(0);
+				glBindTexture(GL_TEXTURE_2D, 0);
+				GL3_Bind(0); // Also update engine's bound state
+				gl3state.currenttexture = 0; // Force update state
 
 				glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cam->tex, 0);

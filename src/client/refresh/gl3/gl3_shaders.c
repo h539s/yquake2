@@ -317,22 +317,30 @@ static const char* fragmentSrc2DpostprocessFisheye = MULTILINE_STRING(
 
 		void main()
 		{
-			// Normalized screen coordinates from -1 to 1
+			// Normalized screen coordinates from -1 to 1, then scaled so that
+			// one unit is half the screen *height* along both axes. The lens has
+			// to be circular, so the distance from the center must be measured in
+			// units that are the same in x and y - otherwise the distortion would
+			// depend on the window's aspect ratio.
 			vec2 uv = passTexCoord * 2.0 - 1.0;
-
-			// Correct for aspect ratio
 			float aspect = resolution.x / resolution.y;
 			uv.x *= aspect;
 
-			// Radius of current pixel from center
+			// Radius of current pixel from center, in those units - so it is
+			// 'aspect' at the left/right edge and 1.0 at the top/bottom edge.
 			float r = length(uv);
 
 			// Convert game FOV (horizontal) to radians
 			float fov_rad = fov * 3.14159265359 / 180.0;
 
-			// Define the max radius based on the FOV.
-			// We want r=1 (top/bottom edge) to correspond to fov_rad/2
-			float theta = r * (fov_rad / 2.0);
+			// Equidistant ("equiangular") fisheye: the angle away from the view
+			// axis grows linearly with the distance from the center of the screen.
+			// Scale it so that r == aspect (the left/right edge) maps to fov_rad/2,
+			// which makes 'fov' the horizontal FOV - the same thing it means for
+			// the normal rectilinear projection. Dividing by 'aspect' is what keeps
+			// that true: without it the horizontal FOV would come out as aspect
+			// times the cvar, and only the vertical extent would match.
+			float theta = r * (fov_rad * 0.5) / aspect;
 
 			// Spherical to Cartesian coordinates for the view ray
 			float phi = atan(uv.y, uv.x);

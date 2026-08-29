@@ -525,8 +525,14 @@ extern void GL3_Draw_StretchPic(int x, int y, int w, int h, const char *pic);
 extern void GL3_Draw_CharScaled(int x, int y, int num, float scale);
 extern void GL3_Draw_TileClear(int x, int y, int w, int h, const char *pic);
 extern void GL3_DrawFrameBufferObject(int x, int y, int w, int h, GLuint fboTexture, const float v_blend[4]);
-extern void GL3_DrawFrameBufferObjectTrapezoid(
-	float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3,
+// one corner of the quad drawn by GL3_DrawFrameBufferObjectTrapezoid()
+typedef struct {
+	float x, y; // position in 2D screen space (y grows downwards!)
+	float s, t; // texcoord that shall end up at this corner
+	float q;    // homogeneous weight, 1.0 for an affine (rectangular) mapping
+} gl3_quadVert_t;
+
+extern void GL3_DrawFrameBufferObjectTrapezoid(const gl3_quadVert_t corners[4],
 	GLuint fboTexture, const float v_blend[4]);
 extern void GL3_Draw_Fill(int x, int y, int w, int h, int c);
 extern void GL3_Draw_FadeScreen(void);

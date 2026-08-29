@@ -117,6 +117,7 @@ CreateShaderProgram(int numShaders, const GLuint* shaders)
 	glBindAttribLocation(shaderProgram, GL3_ATTRIB_COLOR, "vertColor");
 	glBindAttribLocation(shaderProgram, GL3_ATTRIB_NORMAL, "normal");
 	glBindAttribLocation(shaderProgram, GL3_ATTRIB_LIGHTFLAGS, "lightFlags");
+	glBindAttribLocation(shaderProgram, GL3_ATTRIB_QCOORD, "qCoord");
 
 	// the following line is not necessary/implicit (as there's only one output)
 	// glBindFragDataLocation(shaderProgram, 0, "outColor"); XXX would this even be here?
@@ -181,18 +182,22 @@ static const char* vertexSrc2D = MULTILINE_STRING(
 			mat4 trans;
 		};
 
-		out vec2 passTexCoord;
+		// homogeneous texcoord: xy is s*q and t*q, z is q.
+		// the fragment shaders divide xy by z, so with q == 1 (the default for
+		// all normal 2D draws) this behaves exactly like a plain vec2 texcoord,
+		// while q != 1 allows perspective correct mapping onto trapezoids
+		out vec3 passTexCoord;
 
 		void main()
 		{
 			gl_Position = trans * vec4(position, 0.0, 1.0);
-			passTexCoord = texCoord;
+			passTexCoord = vec3(texCoord * qCoord, qCoord);
 		}
 );
 
 static const char* fragmentSrc2D = MULTILINE_STRING(
 
-		in vec2 passTexCoord;
+		in vec3 passTexCoord;
 
 		// for UBO shared between all shaders (incl. 2D)
 		layout (std140) uniform uniCommon
@@ -210,7 +215,7 @@ static const char* fragmentSrc2D = MULTILINE_STRING(
 
 		void main()
 		{
-			vec4 texel = texture(tex, passTexCoord);
+			vec4 texel = textureProj(tex, passTexCoord);
 			// the gl1 renderer used glAlphaFunc(GL_GREATER, 0.666);
 			// and glEnable(GL_ALPHA_TEST); for 2D rendering
 			// this should do the same
@@ -227,7 +232,7 @@ static const char* fragmentSrc2D = MULTILINE_STRING(
 // like fragmentSrc2D, but also multiplies by color uniform for tinting (e.g. crosshair color)
 static const char* fragmentSrc2Dtinted = MULTILINE_STRING(
 
-		in vec2 passTexCoord;
+		in vec3 passTexCoord;
 
 		// for UBO shared between all shaders (incl. 2D)
 		layout (std140) uniform uniCommon
@@ -245,7 +250,7 @@ static const char* fragmentSrc2Dtinted = MULTILINE_STRING(
 
 		void main()
 		{
-			vec4 texel = texture(tex, passTexCoord);
+			vec4 texel = textureProj(tex, passTexCoord);
 
 			if(texel.a <= 0.666)
 				discard;
@@ -261,7 +266,7 @@ static const char* fragmentSrc2Dtinted = MULTILINE_STRING(
 );
 
 static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
-		in vec2 passTexCoord;
+		in vec3 passTexCoord;
 
 		// for UBO shared between all shaders (incl. 2D)
 		// TODO: not needed here, remove?
@@ -283,7 +288,7 @@ static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
 		{
 			// no gamma or intensity here, it has been applied before
 			// (this is just for postprocessing)
-			vec4 res = texture(tex, passTexCoord);
+			vec4 res = textureProj(tex, passTexCoord);
 			// apply the v_blend, usually blended as a colored quad with:
 			// glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			res.rgb = v_blend.a * v_blend.rgb + (1.0 - v_blend.a)*res.rgb;
@@ -292,7 +297,7 @@ static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
 );
 
 static const char* fragmentSrc2DpostprocessWater = MULTILINE_STRING(
-		in vec2 passTexCoord;
+		in vec3 passTexCoord;
 
 		// for UBO shared between all shaders (incl. 2D)
 		// TODO: not needed here, remove?
@@ -316,7 +321,7 @@ static const char* fragmentSrc2DpostprocessWater = MULTILINE_STRING(
 
 		void main()
 		{
-			vec2 uv = passTexCoord;
+			vec2 uv = passTexCoord.xy / passTexCoord.z;
 
 			// warping based on vkquake2
 			// here uv is always between 0 and 1 so ignore all that scrWidth and gl_FragCoord stuff

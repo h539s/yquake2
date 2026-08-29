@@ -2197,43 +2197,60 @@ GL3_RenderFrame(refdef_t *fd)
 		// Center
 		GL3_DrawFrameBufferObject(cx, cy, sq_size, sq_size, gl3state.virtual_cameras[0].tex, v_blend);
 
-		// The bounding box of the entire unfolded cube (3x3 grid)
-		int out_left = cx - sq_size;
-		int out_right = cx + 2 * sq_size;
-		int out_bottom = cy - sq_size;
-		int out_top = cy + 2 * sq_size;
+		// The inner square, i.e. the edges the trapezoids are attached to.
+		// Note that 2D rendering uses an y-down ortho projection (see GL3_SetGL2D()),
+		// so in_top has the *smaller* y - and the FBO textures have t=0 at their
+		// bottom, i.e. t=1 belongs to the smaller y as well.
+		float in_left = cx, in_right = cx + sq_size;
+		float in_top = cy,  in_bottom = cy + sq_size;
 
-		// Top
-		GL3_DrawFrameBufferObjectTrapezoid(
-			out_left, out_top,
-			cx, cy + sq_size,
-			cx + sq_size, cy + sq_size,
-			out_right, out_top,
-			gl3state.virtual_cameras[1].tex, v_blend);
+		// ... and the outer square (the whole unfolded cube, 3x3 times sq_size)
+		// the trapezoids are stretched onto. The parts that fall outside the
+		// screen are automatically cropped by the viewport.
+		float out_left = cx - sq_size, out_right = cx + 2 * sq_size;
+		float out_top = cy - sq_size,  out_bottom = cy + 2 * sq_size;
 
-		// Bottom
-		GL3_DrawFrameBufferObjectTrapezoid(
-			cx, cy,
-			out_left, out_bottom,
-			out_right, out_bottom,
-			cx + sq_size, cy,
-			gl3state.virtual_cameras[2].tex, v_blend);
+		// The outer edge of every trapezoid is 3 times as long as the inner one,
+		// so its corners need q=3 to get a perspective correct mapping instead of
+		// two affinely textured triangles with a visible seam along the diagonal.
+		const float q_in = 1.0f, q_out = 3.0f;
 
-		// Left
-		GL3_DrawFrameBufferObjectTrapezoid(
-			out_left, out_top,
-			out_left, out_bottom,
-			cx, cy,
-			cx, cy + sq_size,
-			gl3state.virtual_cameras[3].tex, v_blend);
+		// Top (camera 1 looks up, so the bottom edge of its image (t=0) is the
+		// one joining the top edge of the center view)
+		gl3_quadVert_t top[4] = {
+			{ in_left,   in_top,     0.0f, 0.0f, q_in  },
+			{ out_left,  out_top,    0.0f, 1.0f, q_out },
+			{ in_right,  in_top,     1.0f, 0.0f, q_in  },
+			{ out_right, out_top,    1.0f, 1.0f, q_out }
+		};
+		GL3_DrawFrameBufferObjectTrapezoid(top, gl3state.virtual_cameras[1].tex, v_blend);
 
-		// Right
-		GL3_DrawFrameBufferObjectTrapezoid(
-			cx + sq_size, cy + sq_size,
-			cx + sq_size, cy,
-			out_right, out_bottom,
-			out_right, out_top,
-			gl3state.virtual_cameras[4].tex, v_blend);
+		// Bottom (camera 2 looks down: its top edge (t=1) joins the center view)
+		gl3_quadVert_t bottom[4] = {
+			{ out_left,  out_bottom, 0.0f, 0.0f, q_out },
+			{ in_left,   in_bottom,  0.0f, 1.0f, q_in  },
+			{ out_right, out_bottom, 1.0f, 0.0f, q_out },
+			{ in_right,  in_bottom,  1.0f, 1.0f, q_in  }
+		};
+		GL3_DrawFrameBufferObjectTrapezoid(bottom, gl3state.virtual_cameras[2].tex, v_blend);
+
+		// Left (camera 3 looks left: its right edge (s=1) joins the center view)
+		gl3_quadVert_t left[4] = {
+			{ out_left,  out_bottom, 0.0f, 0.0f, q_out },
+			{ out_left,  out_top,    0.0f, 1.0f, q_out },
+			{ in_left,   in_bottom,  1.0f, 0.0f, q_in  },
+			{ in_left,   in_top,     1.0f, 1.0f, q_in  }
+		};
+		GL3_DrawFrameBufferObjectTrapezoid(left, gl3state.virtual_cameras[3].tex, v_blend);
+
+		// Right (camera 4 looks right: its left edge (s=0) joins the center view)
+		gl3_quadVert_t right[4] = {
+			{ in_right,  in_bottom,  0.0f, 0.0f, q_in  },
+			{ in_right,  in_top,     0.0f, 1.0f, q_in  },
+			{ out_right, out_bottom, 1.0f, 0.0f, q_out },
+			{ out_right, out_top,    1.0f, 1.0f, q_out }
+		};
+		GL3_DrawFrameBufferObjectTrapezoid(right, gl3state.virtual_cameras[4].tex, v_blend);
 
 		// Now render the weapon model on top of everything, using the original camera
 		glClear(GL_DEPTH_BUFFER_BIT);

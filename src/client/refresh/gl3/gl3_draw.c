@@ -165,11 +165,11 @@ drawTexturedRectangle(GLuint texNum, float x, float y, float w, float h,
 	GLushort firstIdx = da_count(vtxBuf);
 
 	gl3_drawVert2D* addVtx = da_addn_uninit(vtxBuf, 4);
-	//                            X,   Y,   S,  T
-	addVtx[0] = (gl3_drawVert2D){ x,   y+h, sl, th };
-	addVtx[1] = (gl3_drawVert2D){ x,   y,   sl, tl };
-	addVtx[2] = (gl3_drawVert2D){ x+w, y+h, sh, th };
-	addVtx[3] = (gl3_drawVert2D){ x+w, y,   sh, tl };
+	//                            X,   Y,   S,  T,  Q
+	addVtx[0] = (gl3_drawVert2D){ x,   y+h, sl, th, 1.0f };
+	addVtx[1] = (gl3_drawVert2D){ x,   y,   sl, tl, 1.0f };
+	addVtx[2] = (gl3_drawVert2D){ x+w, y+h, sh, th, 1.0f };
+	addVtx[3] = (gl3_drawVert2D){ x+w, y,   sh, tl, 1.0f };
 
 	GLushort* addIdx = da_addn_uninit(idxBuf, 6);
 	addIdx[0] = firstIdx;  // first triangle of rectangle
@@ -392,12 +392,28 @@ GL3_DrawFrameBufferObject(int x, int y, int w, int h, GLuint fboTexture, const f
 	drawTexturedRectangleNow(x, y, w, h, 0, 1, 1, 0);
 }
 
+/*
+ * Draws an FBO texture onto an arbitrary convex quad (used for the trapezoids
+ * of the multi-frustum cube layout).
+ *
+ * corners[] is in triangle strip order, *not* in the order you'd walk around
+ * the quad - so corners[0] and corners[3] are diagonally opposite, and so are
+ * corners[1] and corners[2]:
+ *
+ *   0-------2      the quad's outline is 0 -> 1 -> 3 -> 2 -> 0
+ *   | \     |      (getting 2 and 3 the wrong way round turns the quad into
+ *   |   \   |       an hourglass, with the two triangles mirrored)
+ *   |     \ |
+ *   1-------3
+ *
+ * Each corner also carries the texcoord that shall end up there and a
+ * homogeneous weight q. For a rectangle all q are 1.0; for a trapezoid whose
+ * two parallel edges have different lengths, q must be proportional to the
+ * length of the edge the corner sits on, otherwise the texture is interpolated
+ * per triangle and you get the classic diagonal seam across the quad.
+ */
 void
-GL3_DrawFrameBufferObjectTrapezoid(
-	float x0, float y0,
-	float x1, float y1,
-	float x2, float y2,
-	float x3, float y3,
+GL3_DrawFrameBufferObjectTrapezoid(const gl3_quadVert_t corners[4],
 	GLuint fboTexture, const float v_blend[4])
 {
 	qboolean underwater = (r_newrefdef.rdflags & RDF_UNDERWATER) != 0;
@@ -419,14 +435,12 @@ GL3_DrawFrameBufferObjectTrapezoid(
 	if (gl3_scrap_dirty)
 		GL3_Scrap_Upload();
 
-	float sl = 0.0f, tl = 1.0f, sh = 1.0f, th = 0.0f;
-
-	gl3_drawVert2D vBuf[4] = {
-		{ x0, y0, sl, th },
-		{ x1, y1, sl, tl },
-		{ x2, y2, sh, th },
-		{ x3, y3, sh, tl }
-	};
+	gl3_drawVert2D vBuf[4];
+	for(int i=0; i<4; ++i)
+	{
+		vBuf[i] = (gl3_drawVert2D){ corners[i].x, corners[i].y,
+		                            corners[i].s, corners[i].t, corners[i].q };
+	}
 
 	GL3_BindVAO(vao2D);
 	GL3_BindVBO(vbo2D);

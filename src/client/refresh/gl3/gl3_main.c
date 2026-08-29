@@ -2118,13 +2118,17 @@ GL3_RenderFrame(refdef_t *fd)
 				cam->width = target_width;
 				cam->height = target_height;
 
+				// make sure we modify the texture on GL_TEXTURE0, not on
+				// whatever TMU happens to be active right now
+				GL3_SelectTMU(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, cam->tex);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam->width, cam->height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glBindTexture(GL_TEXTURE_2D, 0);
-				GL3_Bind(0); // Also update engine's bound state
-				gl3state.currenttexture = 0; // Force update state
+				gl3state.currenttexture = 0; // we just unbound it, force a rebind next time
 
 				glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cam->tex, 0);
@@ -2166,17 +2170,22 @@ GL3_RenderFrame(refdef_t *fd)
 
 			GL3_RenderView(&cam_fd);
 
-				// Render weapon into this FBO
-				glClear(GL_DEPTH_BUFFER_BIT);
-				SetupGL();
-				gl3state.is_weapon_pass = true;
-				GL3_DrawEntitiesOnList(gl3state.is_weapon_pass);
-				GL3_Draw3DBatchesNow();
-				gl3state.is_weapon_pass = false;
-				GL3_SetGL2D();
+			// Render the weapon into this FBO, on top of the world that was
+			// just rendered into it. SetupGL() calls GL3_Clear(), which must
+			// only clear the depth buffer here - clearing the color buffer
+			// again would wipe out the world we just drew (and leave nothing
+			// but the clear color behind), so tell GL3_Clear() about it by
+			// setting is_weapon_pass *before* calling SetupGL().
+			gl3state.is_weapon_pass = true;
+			SetupGL();
+			GL3_DrawEntitiesOnList(gl3state.is_weapon_pass);
+			GL3_Draw3DBatchesNow();
+			gl3state.is_weapon_pass = false;
 
-				GL3_SetLightLevel(NULL);
-			}
+			GL3_SetGL2D();
+
+			GL3_SetLightLevel(NULL);
+		}
 
 		// Reset FBO binding
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2229,7 +2238,9 @@ GL3_Clear(void)
 	// Define which buffers need clearing
 	GLbitfield clearFlags = GL_DEPTH_BUFFER_BIT;
 
-	if (r_clear->value || gl3state.ppFBObound)
+	// The weapon pass renders on top of the world that's already in the
+	// currently bound FBO, so it may only clear the depth buffer.
+	if ((r_clear->value || gl3state.ppFBObound) && !gl3state.is_weapon_pass)
 	{
 		clearFlags |= GL_COLOR_BUFFER_BIT;
 	}

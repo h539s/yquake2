@@ -603,12 +603,18 @@ GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4])
 {
 	gl3ShaderInfo_t* shader = &gl3state.si2DpostProcessFisheye;
 
+	// in case some batched 2D draws are outstanding, draw them now - otherwise
+	// drawTexturedRectangleNow() would flush them with *their* shader bound
+	// and the fisheye quad would be drawn with the wrong program
+	GL3_DrawCurrent2Dbatch();
+
 	GL3_UseProgram(shader->shaderProgram);
 
 	// Bind the 6 FBO textures to GL_TEXTURE0 .. GL_TEXTURE5
+	// (use GL3_SelectTMU() so gl3state.currenttmu stays in sync)
 	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 	{
-		glActiveTexture(GL_TEXTURE0 + i);
+		GL3_SelectTMU(GL_TEXTURE0 + i);
 		glBindTexture(GL_TEXTURE_2D, gl3state.virtual_cameras[i].tex);
 	}
 
@@ -646,6 +652,12 @@ GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4])
 
 	drawTexturedRectangleNow(x, y, w, h, 0, 1, 1, 0);
 
-	// reset active texture
-	glActiveTexture(GL_TEXTURE0);
+	// We just clobbered GL_TEXTURE0 (the "normal" texture) and GL_TEXTURE1..4
+	// (the lightmaps). GL3_Bind() and GL3_BindLightmap() cache what they bound
+	// last, so without invalidating that cache the next frame would render the
+	// world with these FBO textures as lightmaps - which additionally creates a
+	// feedback loop, as those same textures are the render targets again.
+	GL3_SelectTMU(GL_TEXTURE0);
+	gl3state.currenttexture = 0;
+	gl3state.currentlightmap = -1;
 }

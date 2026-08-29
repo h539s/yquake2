@@ -525,6 +525,7 @@ extern void GL3_Draw_StretchPic(int x, int y, int w, int h, const char *pic);
 extern void GL3_Draw_CharScaled(int x, int y, int num, float scale);
 extern void GL3_Draw_TileClear(int x, int y, int w, int h, const char *pic);
 extern void GL3_DrawFrameBufferObject(int x, int y, int w, int h, GLuint fboTexture, const float v_blend[4]);
+extern void GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4]);
 extern void GL3_Draw_Fill(int x, int y, int w, int h, int c);
 extern void GL3_Draw_FadeScreen(void);
 extern void GL3_Draw_Flash(const float color[4], float x, float y, float w, float h);

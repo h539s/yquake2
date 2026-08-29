@@ -2083,14 +2083,24 @@ GL3_RenderFrame(refdef_t *fd)
 	{
 		// Draw the world with the multi-camera setup
 
-		int base_width = r_newrefdef.width;
-		int base_height = r_newrefdef.height;
+		// The layout below is a 3x3 square of sq_size = fd->width/3, so the whole
+		// mosaic is fd->width pixels wide. That budget is spread unevenly over
+		// the cameras: the center only covers 1/3 of the FOV but gets 2/3 of the
+		// pixels, and the two opposing side cameras share the remaining third.
+		//
+		// Every camera still renders a full 90x90 degrees - the side cameras
+		// just store their view anamorphically squeezed (left/right horizontally,
+		// top/bottom vertically, i.e. exactly along the axis where the trapezoids
+		// cram a whole camera image into a single sq_size wide/tall band anyway).
+		// Drawing the trapezoids stretches it back out.
+		int base_res = fd->width;
 
-		// Use a large enough square resolution for quality
-		int sq_fbo_res = (base_width > base_height) ? base_width / 2 : base_height / 2;
+		int center_res = (base_res * 2) / 3;
+		int side_res = base_res / 6;
 
-		int target_width = sq_fbo_res;
-		int target_height = sq_fbo_res;
+		// zero (or absurdly small) sized FBOs aren't complete
+		if (center_res < 8) center_res = 8;
+		if (side_res < 4) side_res = 4;
 
 		float target_fov_x = 90.0f;
 		float target_fov_y = 90.0f;
@@ -2102,6 +2112,12 @@ GL3_RenderFrame(refdef_t *fd)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
 
+			// cameras 3 and 4 (left/right) are squeezed horizontally, cameras 1
+			// and 2 (top/bottom) vertically; the axis a camera shares with the
+			// center view keeps the full resolution so the seams match up
+			int target_width  = (i == 3 || i == 4) ? side_res : center_res;
+			int target_height = (i == 1 || i == 2) ? side_res : center_res;
+
 			// Setup FBO dimensions if they don't match
 			if (cam->width != target_width || cam->height != target_height)
 			{
@@ -2112,6 +2128,10 @@ GL3_RenderFrame(refdef_t *fd)
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam->width, cam->height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				// the trapezoids sample right up to the edge of the texture, so
+				// don't let the default GL_REPEAT bleed the opposite edge in
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glBindTexture(GL_TEXTURE_2D, 0);
 				GL3_Bind(0); // Also update engine's bound state
 				gl3state.currenttexture = 0; // Force update state
@@ -2141,8 +2161,12 @@ GL3_RenderFrame(refdef_t *fd)
 			cam_fd.fov_x = target_fov_x;
 			cam_fd.fov_y = target_fov_y;
 
-			cam_fd.width = cam->width;
-			cam_fd.height = cam->height;
+			// NOTE: GL3_SetPerspective() derives the horizontal FOV from fov_y
+			// and refdef width/height, so this must stay square to keep all five
+			// frustums at 90x90 degrees - the FBO itself may well be squeezed,
+			// the viewport transform then does the anamorphic scaling for free.
+			cam_fd.width = center_res;
+			cam_fd.height = center_res;
 
 			// Set the yaw and pitch offsets to be applied in local space during SetupGL
 			gl3state.virtual_yaw_offset = cam->yaw_offset;

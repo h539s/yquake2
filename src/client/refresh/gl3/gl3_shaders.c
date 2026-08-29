@@ -337,51 +337,58 @@ static const char* fragmentSrc2DpostprocessFisheye = MULTILINE_STRING(
 			// Spherical to Cartesian coordinates for the view ray
 			float phi = atan(uv.y, uv.x);
 
-			// View vector in 3D
-			vec3 dir = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+			// The view ray, in the view frame of the front camera:
+			//   d.x = right, d.y = up, d.z = forward
+			vec3 d = vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
 
-			vec3 q_dir = vec3(dir.z, -dir.x, -dir.y);
-
-			// Find dominant axis to select cubemap face
-			vec3 abs_dir = abs(q_dir);
+			// The 6 cameras all have a 90 degree FOV and look along the axes of
+			// that same frame, so the face to sample is simply the dominant axis
+			// of d, and the coordinate within the face is d projected into that
+			// camera's own frame.
+			//
+			// Each camera's frame is derived from the front camera's by the
+			// rotation SetupGL() applies for its yaw_offset/pitch_offset, so with
+			// (right, up, forward) axes expressed in the front camera's frame:
+			//
+			//   front  ( +x, +y, +z )        back    ( -x, +y, -z )
+			//   right  ( -z, +y, +x )        left    ( +z, +y, -x )
+			//   top    ( +x, -z, +y )        bottom  ( +x, +z, -y )
+			//
+			// so the projection into a face is vec2(d.right, d.up) / d.forward,
+			// which lands in [-1, 1] and becomes the texture coordinate below.
+			vec3 ad = abs(d);
 
 			vec2 sample_uv;
 			vec4 res;
 
-			if(abs_dir.x >= abs_dir.y && abs_dir.x >= abs_dir.z)
+			if(ad.z >= ad.x && ad.z >= ad.y)
 			{
-				if(q_dir.x > 0.0) { // Front (+X)
-					sample_uv = vec2(-q_dir.y / q_dir.x, -q_dir.z / q_dir.x);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texFront, sample_uv);
-				} else { // Back (-X)
-					sample_uv = vec2(q_dir.y / q_dir.x, q_dir.z / q_dir.x);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texBack, sample_uv);
+				if(d.z > 0.0) { // front
+					sample_uv = vec2(d.x, d.y) / d.z;
+					res = texture(texFront, sample_uv * 0.5 + 0.5);
+				} else { // back
+					sample_uv = vec2(-d.x, d.y) / -d.z;
+					res = texture(texBack, sample_uv * 0.5 + 0.5);
 				}
 			}
-			else if(abs_dir.y >= abs_dir.x && abs_dir.y >= abs_dir.z)
+			else if(ad.x >= ad.y)
 			{
-				if(q_dir.y > 0.0) { // Left (+Y)
-					sample_uv = vec2(q_dir.x / q_dir.y, -q_dir.z / q_dir.y);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texLeft, sample_uv);
-				} else { // Right (-Y)
-					sample_uv = vec2(-q_dir.x / q_dir.y, q_dir.z / q_dir.y);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texRight, sample_uv);
+				if(d.x > 0.0) { // right
+					sample_uv = vec2(-d.z, d.y) / d.x;
+					res = texture(texRight, sample_uv * 0.5 + 0.5);
+				} else { // left
+					sample_uv = vec2(d.z, d.y) / -d.x;
+					res = texture(texLeft, sample_uv * 0.5 + 0.5);
 				}
 			}
 			else
 			{
-				if(q_dir.z > 0.0) { // Top (+Z)
-					sample_uv = vec2(-q_dir.y / q_dir.z, q_dir.x / q_dir.z);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texTop, sample_uv);
-				} else { // Bottom (-Z)
-					sample_uv = vec2(-q_dir.y / q_dir.z, -q_dir.x / q_dir.z);
-					sample_uv = sample_uv * 0.5 + 0.5;
-					res = texture(texBottom, sample_uv);
+				if(d.y > 0.0) { // top
+					sample_uv = vec2(d.x, -d.z) / d.y;
+					res = texture(texTop, sample_uv * 0.5 + 0.5);
+				} else { // bottom
+					sample_uv = vec2(d.x, d.z) / -d.y;
+					res = texture(texBottom, sample_uv * 0.5 + 0.5);
 				}
 			}
 

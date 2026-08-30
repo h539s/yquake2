@@ -610,40 +610,27 @@ GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4])
 
 	GL3_UseProgram(shader->shaderProgram);
 
-	// Bind the 6 FBO textures to GL_TEXTURE0 .. GL_TEXTURE5
-	// (use GL3_SelectTMU() so gl3state.currenttmu stays in sync)
-	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
-	{
-		GL3_SelectTMU(GL_TEXTURE0 + i);
-		glBindTexture(GL_TEXTURE_2D, gl3state.virtual_cameras[i].tex);
-	}
+	// The shader's samplerCube defaults to texture unit 0, like the sampler2D
+	// of the other 2D shaders. Binding a cube map does not disturb the
+	// GL_TEXTURE_2D binding that GL3_Bind() tracks for that unit, so there is
+	// no cached state to invalidate here.
+	GL3_SelectTMU(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, gl3state.fisheyeCubeTex);
 
 	if(shader->uniVblend != -1)
 	{
 		glUniform4fv(shader->uniVblend, 1, v_blend);
 	}
 
+	// the FOV the player configured, which the fisheye lens maps to the
+	// horizontal extent of the screen
 	GLint fovLoc = glGetUniformLocation(shader->shaderProgram, "fov");
 	if(fovLoc != -1)
 	{
 		glUniform1f(fovLoc, r_newrefdef.fov_x);
 	}
 
-	// The shader needs to know which texture units correspond to which face
-	GLint texLoc0 = glGetUniformLocation(shader->shaderProgram, "texFront");
-	GLint texLoc1 = glGetUniformLocation(shader->shaderProgram, "texRight");
-	GLint texLoc2 = glGetUniformLocation(shader->shaderProgram, "texBack");
-	GLint texLoc3 = glGetUniformLocation(shader->shaderProgram, "texLeft");
-	GLint texLoc4 = glGetUniformLocation(shader->shaderProgram, "texTop");
-	GLint texLoc5 = glGetUniformLocation(shader->shaderProgram, "texBottom");
-	if(texLoc0 != -1) glUniform1i(texLoc0, 0);
-	if(texLoc1 != -1) glUniform1i(texLoc1, 1);
-	if(texLoc2 != -1) glUniform1i(texLoc2, 2);
-	if(texLoc3 != -1) glUniform1i(texLoc3, 3);
-	if(texLoc4 != -1) glUniform1i(texLoc4, 4);
-	if(texLoc5 != -1) glUniform1i(texLoc5, 5);
-
-	// Also we need width/height of screen so we can correctly compute normalized coordinates
+	// .. and the size of the view, so the lens can stay circular
 	GLint resLoc = glGetUniformLocation(shader->shaderProgram, "resolution");
 	if(resLoc != -1)
 	{
@@ -652,12 +639,5 @@ GL3_DrawCubemapFisheye(int x, int y, int w, int h, const float v_blend[4])
 
 	drawTexturedRectangleNow(x, y, w, h, 0, 1, 1, 0);
 
-	// We just clobbered GL_TEXTURE0 (the "normal" texture) and GL_TEXTURE1..4
-	// (the lightmaps). GL3_Bind() and GL3_BindLightmap() cache what they bound
-	// last, so without invalidating that cache the next frame would render the
-	// world with these FBO textures as lightmaps - which additionally creates a
-	// feedback loop, as those same textures are the render targets again.
-	GL3_SelectTMU(GL_TEXTURE0);
-	gl3state.currenttexture = 0;
-	gl3state.currentlightmap = -1;
+	glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 }

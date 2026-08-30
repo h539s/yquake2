@@ -681,54 +681,70 @@ GL3_Init(void)
 	// take the viewsize into account (enforce that by setting invalid size)
 	gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
 
-	// Initialize virtual cameras
+	// Initialize the 6 virtual cameras the fisheye view is assembled from.
+	// Each renders a 90x90 degree view into one face of a cube map, so that
+	// the fisheye shader can look the view ray up with a single texture()
+	// call and let the hardware filter across the face borders.
+	//
+	// Which camera goes into which face follows from how OpenGL samples a cube
+	// map: its faces have their t axis running *downwards*, while rendering
+	// into a face produces an image with t running upwards. The shader
+	// compensates by negating y in the lookup vector, which also means the
+	// camera looking up is stored in the -Y face and vice versa.
 	gl3state.num_virtual_cameras = 6;
 
 	// Camera 0 (Front): FOV 90x90, yaw 0, pitch 0
-	gl3state.virtual_cameras[0].fov = 90.0f;
-	gl3state.virtual_cameras[0].fov_y = 90.0f;
 	gl3state.virtual_cameras[0].yaw_offset = 0.0f;
 	gl3state.virtual_cameras[0].pitch_offset = 0.0f;
+	gl3state.virtual_cameras[0].cubeFace = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
 
 	// Camera 1 (Right): FOV 90x90, yaw -90, pitch 0
-	gl3state.virtual_cameras[1].fov = 90.0f;
-	gl3state.virtual_cameras[1].fov_y = 90.0f;
 	gl3state.virtual_cameras[1].yaw_offset = -90.0f;
 	gl3state.virtual_cameras[1].pitch_offset = 0.0f;
+	gl3state.virtual_cameras[1].cubeFace = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
 
 	// Camera 2 (Back): FOV 90x90, yaw 180, pitch 0
-	gl3state.virtual_cameras[2].fov = 90.0f;
-	gl3state.virtual_cameras[2].fov_y = 90.0f;
 	gl3state.virtual_cameras[2].yaw_offset = 180.0f;
 	gl3state.virtual_cameras[2].pitch_offset = 0.0f;
+	gl3state.virtual_cameras[2].cubeFace = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
 
 	// Camera 3 (Left): FOV 90x90, yaw 90, pitch 0
-	gl3state.virtual_cameras[3].fov = 90.0f;
-	gl3state.virtual_cameras[3].fov_y = 90.0f;
 	gl3state.virtual_cameras[3].yaw_offset = 90.0f;
 	gl3state.virtual_cameras[3].pitch_offset = 0.0f;
+	gl3state.virtual_cameras[3].cubeFace = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
 
 	// Camera 4 (Top): FOV 90x90, yaw 0, pitch 90
-	gl3state.virtual_cameras[4].fov = 90.0f;
-	gl3state.virtual_cameras[4].fov_y = 90.0f;
 	gl3state.virtual_cameras[4].yaw_offset = 0.0f;
 	gl3state.virtual_cameras[4].pitch_offset = 90.0f;
+	gl3state.virtual_cameras[4].cubeFace = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
 
 	// Camera 5 (Bottom): FOV 90x90, yaw 0, pitch -90
-	gl3state.virtual_cameras[5].fov = 90.0f;
-	gl3state.virtual_cameras[5].fov_y = 90.0f;
 	gl3state.virtual_cameras[5].yaw_offset = 0.0f;
 	gl3state.virtual_cameras[5].pitch_offset = -90.0f;
+	gl3state.virtual_cameras[5].cubeFace = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
 
 	for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 	{
-		gl3state.virtual_cameras[i].width = -1;
-		gl3state.virtual_cameras[i].height = -1;
+		// a cube face is square and its edges must meet the neighbouring
+		// faces exactly, so all 6 cameras need a 90 degree FOV in both axes
+		gl3state.virtual_cameras[i].fov = 90.0f;
+		gl3state.virtual_cameras[i].fov_y = 90.0f;
 
 		glGenFramebuffers(1, &gl3state.virtual_cameras[i].fbo);
-		glGenTextures(1, &gl3state.virtual_cameras[i].tex);
-		glGenRenderbuffers(1, &gl3state.virtual_cameras[i].rbo);
 	}
+
+	glGenTextures(1, &gl3state.fisheyeCubeTex);
+	glGenRenderbuffers(1, &gl3state.fisheyeCubeRbo);
+	// the faces are allocated in GL3_RenderFrame() once the view size is known
+	// (enforce that by setting an invalid size)
+	gl3state.fisheyeCubeRes = -1;
+
+#ifndef YQ2_GL3_GLES
+	// filter across the cube map's face borders instead of clamping at them,
+	// otherwise the seams between the 6 views stay visible.
+	// GLES3 cube maps are always seamless and don't have (or need) this enum.
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
 
 	Com_Printf("\n");
 	return true;
@@ -765,17 +781,21 @@ GL3_Shutdown(void)
 		gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
 		gl3state.virtual_pitch_offset = 0.0f;
 
+		// free the fisheye cube map, its depth buffer and the 6 cameras' FBOs
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
-			if(gl3state.virtual_cameras[i].rbo != 0)
-				glDeleteRenderbuffers(1, &gl3state.virtual_cameras[i].rbo);
-			if(gl3state.virtual_cameras[i].tex != 0)
-				glDeleteTextures(1, &gl3state.virtual_cameras[i].tex);
 			if(gl3state.virtual_cameras[i].fbo != 0)
 				glDeleteFramebuffers(1, &gl3state.virtual_cameras[i].fbo);
-			gl3state.virtual_cameras[i].rbo = gl3state.virtual_cameras[i].tex = gl3state.virtual_cameras[i].fbo = 0;
+			gl3state.virtual_cameras[i].fbo = 0;
 		}
 		gl3state.num_virtual_cameras = 0;
+
+		if(gl3state.fisheyeCubeRbo != 0)
+			glDeleteRenderbuffers(1, &gl3state.fisheyeCubeRbo);
+		if(gl3state.fisheyeCubeTex != 0)
+			glDeleteTextures(1, &gl3state.fisheyeCubeTex);
+		gl3state.fisheyeCubeRbo = gl3state.fisheyeCubeTex = 0;
+		gl3state.fisheyeCubeRes = -1;
 	}
 
 	da_free(vtxBuf);
@@ -2102,64 +2122,71 @@ GL3_RenderFrame(refdef_t *fd)
 		int base_width = r_newrefdef.width;
 		int base_height = r_newrefdef.height;
 
+		// the cube faces are square, so size them after the larger view axis
 		int face_res = base_width > base_height ? base_width : base_height;
 
+		// (re)allocate the cube map and the shared depth buffer when the view
+		// size changed - the 6 FBOs are then pointed at their faces again
+		if (gl3state.fisheyeCubeRes != face_res)
+		{
+			gl3state.fisheyeCubeRes = face_res;
+
+			// make sure we modify the texture on GL_TEXTURE0, not on
+			// whatever TMU happens to be active right now
+			GL3_SelectTMU(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, gl3state.fisheyeCubeTex);
+			for (int i = 0; i < 6; i++)
+			{
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB,
+						face_res, face_res, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+			// the 6 views are rendered one after another, so they can share
+			// a single depth buffer
+			glBindRenderbuffer(GL_RENDERBUFFER, gl3state.fisheyeCubeRbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, face_res, face_res);
+			glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+			for (int i = 0; i < gl3state.num_virtual_cameras; i++)
+			{
+				virtual_camera_t* cam = &gl3state.virtual_cameras[i];
+
+				glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+						cam->cubeFace, gl3state.fisheyeCubeTex, 0);
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+						GL_RENDERBUFFER, gl3state.fisheyeCubeRbo);
+
+				GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+				if (fbState != GL_FRAMEBUFFER_COMPLETE)
+				{
+					Com_Printf("GL3 Fisheye WARNING: FBO for cube map face 0x%x is not complete, status = 0x%x\n",
+							cam->cubeFace, fbState);
+				}
+			}
+		}
 
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
 
-			int target_width = face_res;
-			int target_height = face_res;
-
-			// Setup FBO dimensions if they don't match
-			if (cam->width != target_width || cam->height != target_height)
-			{
-				cam->width = target_width;
-				cam->height = target_height;
-
-				// make sure we modify the texture on GL_TEXTURE0, not on
-				// whatever TMU happens to be active right now
-				GL3_SelectTMU(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, cam->tex);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, cam->width, cam->height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-				glBindTexture(GL_TEXTURE_2D, 0);
-				gl3state.currenttexture = 0; // we just unbound it, force a rebind next time
-
-				glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cam->tex, 0);
-
-				glBindRenderbuffer(GL_RENDERBUFFER, cam->rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, cam->width, cam->height);
-				glBindRenderbuffer(GL_RENDERBUFFER, 0);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cam->rbo);
-
-				GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-				if (fbState != GL_FRAMEBUFFER_COMPLETE)
-				{
-					Com_Printf("GL3 Multi-camera WARNING: FBO is not complete, status = 0x%x\n", fbState);
-				}
-			}
-
 			glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
-
-			// Clear this FBO specifically before rendering
-			glViewport(0, 0, cam->width, cam->height);
+			glViewport(0, 0, face_res, face_res);
 
 			// Create a copy of the refdef specifically for this camera
 			refdef_t cam_fd = *fd;
 			cam_fd.fov_x = cam->fov;
-				cam_fd.fov_y = cam->fov_y;
-				gl3state.virtual_pitch_offset = cam->pitch_offset;
+			cam_fd.fov_y = cam->fov_y;
+			gl3state.virtual_pitch_offset = cam->pitch_offset;
 
-
-
-			cam_fd.width = cam->width;
-			cam_fd.height = cam->height;
+			cam_fd.width = face_res;
+			cam_fd.height = face_res;
 
 			// Set the yaw and pitch offsets to be applied in local space during SetupGL
 			gl3state.virtual_yaw_offset = cam->yaw_offset;

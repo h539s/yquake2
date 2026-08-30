@@ -201,16 +201,15 @@ enum {
 	MAX_LIGHTMAPS_PER_SURFACE = MAXLIGHTMAPS // 4
 };
 
+// one of the 6 views the fisheye projection is assembled from. They all render
+// into a face of gl3state.fisheyeCubeTex, through their own FBO.
 typedef struct {
 	float fov;
 	float fov_y;
 	float yaw_offset;
 	float pitch_offset;
-	int width;
-	int height;
+	GLenum cubeFace; // the GL_TEXTURE_CUBE_MAP_* face this camera renders into
 	GLuint fbo;
-	GLuint tex;
-	GLuint rbo;
 } virtual_camera_t;
 
 typedef struct
@@ -289,6 +288,9 @@ typedef struct
 
 	virtual_camera_t virtual_cameras[9];
 	int num_virtual_cameras;
+	GLuint fisheyeCubeTex; // GL_TEXTURE_CUBE_MAP holding all 6 camera views
+	GLuint fisheyeCubeRbo; // depth buffer, shared by all 6 faces
+	int fisheyeCubeRes;    // edge length of a cube face, -1 if not set up yet
 	float virtual_yaw_offset;
 	float virtual_pitch_offset;
 	qboolean is_weapon_pass;

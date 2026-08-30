@@ -657,7 +657,8 @@ VID_MenuInit(void)
 	s_fov_slider.generic.y = (y += 10);
 	s_fov_slider.cvar = "fov";
 	s_fov_slider.minvalue = 60;
-	s_fov_slider.maxvalue = 120;
+	/* 179 is the widest the renderer accepts, see CalcFov() */
+	s_fov_slider.maxvalue = 179;
 	s_fov_slider.slidestep = 1;
 	s_fov_slider.printformat = "%.0f";
 

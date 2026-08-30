@@ -821,6 +821,18 @@ CL_CalcViewValues(void)
 		cl.refdef.fov_x = ifov;
 	}
 
+	/* CalcFov() drops to the console for anything outside this range, and Hor+
+	   widens the FOV, so a high one lands just past 179 on a wide display:
+	   fov 179 becomes 179.25 at 16:9 and 179.62 at 32:9. */
+	if (cl.refdef.fov_x < 1.0f)
+	{
+		cl.refdef.fov_x = 1.0f;
+	}
+	else if (cl.refdef.fov_x > 179.0f)
+	{
+		cl.refdef.fov_x = 179.0f;
+	}
+
 	/* don't interpolate blend color */
 	for (i = 0; i < 4; i++)
 	{

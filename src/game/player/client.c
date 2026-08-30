@@ -1647,9 +1647,9 @@ PutClientInServer(edict_t *ent)
 		{
 			client->ps.fov = 90;
 		}
-		else if (client->ps.fov > 160)
+		else if (client->ps.fov > 179)
 		{
-			client->ps.fov = 160;
+			client->ps.fov = 179;
 		}
 	}
 
@@ -1883,9 +1883,9 @@ ClientUserinfoChanged(edict_t *ent, char *userinfo)
 		{
 			ent->client->ps.fov = 90;
 		}
-		else if (ent->client->ps.fov > 160)
+		else if (ent->client->ps.fov > 179)
 		{
-			ent->client->ps.fov = 160;
+			ent->client->ps.fov = 179;
 		}
 	}
 

@@ -2084,19 +2084,26 @@ GL3_RenderFrame(refdef_t *fd)
 		// Draw the world with the multi-camera setup
 
 		// The layout below is a 3x3 square of sq_size = fd->width/3, so the whole
-		// mosaic is fd->width pixels wide. That budget is spread unevenly over
-		// the cameras: the center only covers 1/3 of the FOV but gets 2/3 of the
-		// pixels, and the two opposing side cameras share the remaining third.
+		// mosaic - and with it the outer edge of every trapezoid - is fd->width
+		// pixels long.
 		//
-		// Every camera still renders a full 90x90 degrees - the side cameras
-		// just store their view anamorphically squeezed (left/right horizontally,
-		// top/bottom vertically, i.e. exactly along the axis where the trapezoids
-		// cram a whole camera image into a single sq_size wide/tall band anyway).
-		// Drawing the trapezoids stretches it back out.
+		// Every camera renders a full 90x90 degrees, but the trapezoids cram a
+		// whole camera image into a single sq_size wide (left/right) or tall
+		// (top/bottom) band, so those cameras store their view anamorphically
+		// squeezed along that axis and drawing stretches it back out.
+		//
+		// Along the *other* axis a side camera covers the full length of the
+		// outer edge, so giving it base_res there makes that edge - the part
+		// that fills the screen - a 1:1 texel to pixel match. Towards the center
+		// seam the projective mapping compresses it into sq_size again.
+		//
+		// The center camera covers only 1/3 of the FOV but gets 3/4 of the width
+		// budget; the two opposing side cameras split what's left on their
+		// squeezed axis.
 		int base_res = fd->width;
 
-		int center_res = (base_res * 2) / 3;
-		int side_res = base_res / 6;
+		int center_res = (base_res * 3) / 4;
+		int side_res = (base_res - center_res) / 2;
 
 		// zero (or absurdly small) sized FBOs aren't complete
 		if (center_res < 8) center_res = 8;
@@ -2113,10 +2120,12 @@ GL3_RenderFrame(refdef_t *fd)
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
 
 			// cameras 3 and 4 (left/right) are squeezed horizontally, cameras 1
-			// and 2 (top/bottom) vertically; the axis a camera shares with the
-			// center view keeps the full resolution so the seams match up
-			int target_width  = (i == 3 || i == 4) ? side_res : center_res;
-			int target_height = (i == 1 || i == 2) ? side_res : center_res;
+			// and 2 (top/bottom) vertically; along their other axis they span
+			// the whole outer edge of the mosaic, so they get base_res there
+			int target_width  = (i == 3 || i == 4) ? side_res
+			                  : (i == 1 || i == 2) ? base_res : center_res;
+			int target_height = (i == 1 || i == 2) ? side_res
+			                  : (i == 3 || i == 4) ? base_res : center_res;
 
 			// Setup FBO dimensions if they don't match
 			if (cam->width != target_width || cam->height != target_height)

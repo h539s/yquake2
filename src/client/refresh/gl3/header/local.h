@@ -201,6 +201,15 @@ enum {
 	MAX_LIGHTMAPS_PER_SURFACE = MAXLIGHTMAPS // 4
 };
 
+// A small margin on top of the cube face resolution the fisheye projection
+// strictly needs, so texture filtering has something to work with.
+#define FISHEYE_FACE_OVERSAMPLE 1.15f
+
+// ... and, in degrees, on the angle the lens reaches, before a face is written
+// off as unreachable. Only has to cover the width of a texel or two, so that
+// seamless filtering can't blend a skipped face into the edge of a rendered one.
+#define FISHEYE_FACE_MARGIN 2.0f
+
 // one of the 6 views the fisheye projection is assembled from. They all render
 // into a face of gl3state.fisheyeCubeTex, through their own FBO.
 typedef struct {

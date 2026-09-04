@@ -2119,11 +2119,32 @@ GL3_RenderFrame(refdef_t *fd)
 	{
 		// Draw the world with the multi-camera setup
 
-		int base_width = r_newrefdef.width;
-		int base_height = r_newrefdef.height;
+		int base_width = fd->width;
+		int base_height = fd->height;
 
-		// the cube faces are square, so size them after the larger view axis
-		int face_res = base_width > base_height ? base_width : base_height;
+		// Size the cube faces after what the lens can actually consume, instead
+		// of after the view - anything above that is rendered and then thrown
+		// away by the shader, and the 6 faces make every wasted pixel count 6x.
+		//
+		// The lens is equidistant and 'fov' is the horizontal FOV, so the image
+		// it produces has a constant angular density of width/fov pixels per
+		// radian. A cube face of N pixels covering 90 degrees is densest at its
+		// corners and thinnest at its center, where it yields N/2 of them, so
+		// matching that minimum is enough to keep the lens fully fed.
+		const float fisheye_fov_rad = fd->fov_x * M_PI / 180.0f;
+		int face_res = (int)ceil(2.0f * (base_width / fisheye_fov_rad) * FISHEYE_FACE_OVERSAMPLE);
+
+		// never spend more than the view itself would have cost, and keep the
+		// faces sane if fov_x is ever tiny
+		face_res = Q_min(face_res, Q_max(base_width, base_height));
+		face_res = Q_max(face_res, 64);
+
+		// The widest angle away from the view axis the lens reaches is at the
+		// screen corner, which sits at radius sqrt(aspect^2 + 1) in the units
+		// the shader measures r in.
+		const float fisheye_aspect = (float)base_width / (float)base_height;
+		const float max_theta = sqrtf(fisheye_aspect * fisheye_aspect + 1.0f)
+				* (fisheye_fov_rad * 0.5f) / fisheye_aspect * 180.0f / M_PI;
 
 		// (re)allocate the cube map and the shared depth buffer when the view
 		// size changed - the 6 FBOs are then pointed at their faces again
@@ -2169,12 +2190,32 @@ GL3_RenderFrame(refdef_t *fd)
 					Com_Printf("GL3 Fisheye WARNING: FBO for cube map face 0x%x is not complete, status = 0x%x\n",
 							cam->cubeFace, fbState);
 				}
+
+				// glTexImage2D() with a NULL pointer leaves the faces undefined,
+				// and a face the lens can't reach is never rendered into - so
+				// wipe them once here, rather than risk uninitialized memory
+				// bleeding in through seamless filtering at a face border.
+				glViewport(0, 0, face_res, face_res);
+				glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+				GL3_ResetClearColor();
 			}
 		}
 
 		for (int i = 0; i < gl3state.num_virtual_cameras; i++)
 		{
 			virtual_camera_t* cam = &gl3state.virtual_cameras[i];
+
+			// How far off the view axis the nearest point of this camera's face
+			// is: 0 for the one looking forward, 45 degrees for the four around
+			// it, 135 for the one looking back. If the lens doesn't reach that
+			// far, the whole scene pass would only fill texels nothing samples.
+			// (At the FOVs the game allows, this always skips the rear view.)
+			float cam_axis_angle = Q_max(fabsf(cam->yaw_offset), fabsf(cam->pitch_offset));
+			if (max_theta + FISHEYE_FACE_MARGIN < cam_axis_angle - 45.0f)
+			{
+				continue;
+			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, cam->fbo);
 			glViewport(0, 0, face_res, face_res);
